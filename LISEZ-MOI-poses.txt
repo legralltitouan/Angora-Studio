@@ -1,9 +1,0 @@
-Mets ici tes images de poses, exactement comme avant :
-
-Assets/
-├── AgentOMG Pose/    1.png … 22.png
-└── Marvouch Pose/    1.png … 22.png
-
-Astuce : copie simplement ton dossier « Assets » actuel par-dessus celui-ci,
-ou recopie son contenu. L'interface affiche les 22 poses de chaque personnage
-et la vérification signale immédiatement toute image manquante.
