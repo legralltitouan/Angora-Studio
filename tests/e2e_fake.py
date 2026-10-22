@@ -256,6 +256,14 @@ def main():
             logs = []
 
             def _sink(ev):
+                if ev["type"] == "cut_verification" and ev.get("active"):
+                    from autoshibi import verification
+                    assert not any(x.get("type")=="stage" and x.get("stage") in ("speech","poses","capcut")
+                                   and x.get("status")=="running" for x in rep.history)
+                    st=verification.state()
+                    keep=media.merge_ranges(st["keep"]+[(10.,14.)])
+                    keep=[(max(.5,a),b) for a,b in keep if b>.55]
+                    assert verification.decide(st["id"],keep)["ok"]
                 if ev["type"] == "log":
                     logs.append(ev)
                     print("   ·", ev["msg"])
@@ -270,7 +278,8 @@ def main():
 
         base_job = config.default_job()
         base_job.update({"projects_dir": projects, "close_capcut": False, "workers": 2,
-                         "template": "AutoShibi-V4", "max_shot_s": 7.0})
+                         "template": "AutoShibi-V4", "max_shot_s": 7.0,
+                         "manual_verify": os.getenv("ANGORA_TEST_VERIFY")=="1"})
 
         # -------- génération
         print("[génération]")
@@ -298,6 +307,17 @@ def main():
         check("durée réduite par le dérush", summary["duration_after_s"] < summary["duration_before_s"],
               f"{summary['duration_before_s']} -> {summary['duration_after_s']}")
         check("progression finale = 100 %", abs(rep.progress() - 1.0) < 1e-6, str(rep.progress()))
+
+        if base_job["manual_verify"]:
+            # Actual project must contain the restored speech interval, not just the UI decision.
+            intervals=[(s["source_timerange"]["start"]/1e6,
+                        (s["source_timerange"]["start"]+s["source_timerange"]["duration"])/1e6)
+                       for s in main["segments"]]
+            assert media.overlap_total(sorted(intervals),[(10,14)]) > 3.95, intervals
+            assert all(a>=.49 for a,b in intervals), intervals
+            assert counts["AgentOMG"] >= 3, counts
+            assert all(s.get("common_keyframes") for s in main["segments"]), "Zooms must be planned after verification"
+            print("  ✅ vérification : passage 10–14 s restauré dans le projet, début supprimé, shibis et zooms régénérés")
 
         # -------- édition d'un projet existant (x2 : remplacement)
         print("[édition]")

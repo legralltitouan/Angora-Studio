@@ -100,9 +100,12 @@ DEFAULT_JOB = {
     "replace_old_shibis": True,
     "repick": False,
 
+    "manual_verify": False,          # timeline avant shibis et zooms
+
     # avancé
     "fresh": False,
     "workers": 3,                   # requêtes Gemini en parallèle
+
 
     # v2
     "preset": "equilibre",          # equilibre | rythme | doux | zooms | shibis | perso

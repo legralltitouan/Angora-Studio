@@ -1,5 +1,5 @@
 """
-AutoShibi Studio 2 — point d'entrée de l'interface.
+Angora Studio — point d'entrée de l'interface.
 
 Double-clique sur Lancer.bat (ou : python app.py).
 Un petit serveur local démarre sur ton PC et l'interface s'ouvre dans ton
@@ -34,7 +34,7 @@ def _free_port(start):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="AutoShibi Studio 2")
+    ap = argparse.ArgumentParser(description="Angora Studio")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--host", default=os.getenv("AUTOSHIBI_HOST", "127.0.0.1"))
     ap.add_argument("--no-browser", action="store_true")
@@ -50,7 +50,7 @@ def main():
     httpd = srv.serve(args.host, port)
     url = f"http://127.0.0.1:{port}/"
     print("=" * 58)
-    print("  AutoShibi Studio 2" + ("  — MODE DÉMO" if srv.DEMO else ""))
+    print("  Angora Studio" + ("  — MODE DÉMO" if srv.DEMO else ""))
     print(f"  Interface : {url}")
     print("  Ferme cette fenêtre (ou Ctrl+C) pour arrêter le logiciel.")
     print("=" * 58, flush=True)

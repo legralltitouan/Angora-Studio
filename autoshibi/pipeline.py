@@ -20,7 +20,7 @@ import threading
 import subprocess
 import concurrent.futures as cf
 
-from . import config, media, gemini as gm, derush, speech, poses, capcut, projedit, checks
+from . import verification, config, media, gemini as gm, derush, speech, poses, capcut, projedit, checks
 from .events import Reporter, CancelToken, Cancelled, Heartbeat
 
 
@@ -117,6 +117,8 @@ def stages_for(job):
     stages = [("prep", "Préparation", 6)]
     if job["mode"] == "generate":
         stages.append(("derush", "Dérush" if job["derush"] else "Découpage des plans", 30 if job["derush"] else 6))
+    if job["mode"] == "generate" and job["derush"] and job.get("manual_verify"):
+        stages.append(("verify", "Vérifier les coupes", 2))
     if want_shibi:
         stages += [("speech", "Qui parle ?", 36), ("poses", "Choix des poses", 14)]
     stages.append(("capcut", "Projet CapCut", 14))
@@ -274,7 +276,17 @@ def _run_generate(job, rep, cancel):
     _save_json(os.path.join(cache_dir, "derush_report.json"),
                [[round(a, 3), round(b, 3)] for a, b in keep])
     kept_s = sum(b - a for a, b in keep)
-    rep.stage_done("derush", f"{len(keep)} plans · {kept_s / 60:.1f} min conservées")
+    removed_s = info["duration"] - kept_s
+    rep.stage_done("derush", f"{len(keep)} plans · {kept_s / 60:.1f} min conservées ({removed_s/60:.1f} min coupées)")
+
+    if job["derush"] and job.get("manual_verify"):
+        keep = verification.request(keep, silences, video, info["duration"],
+                                    chunks_mix, cache_dir, rep, cancel)
+        # Rebuild shot divisions for zoom planning after the human edits.
+        keep = derush._split_long(keep, silences, job["max_shot_s"])
+        kept_s = sum(b - a for a, b in keep)
+        _save_json(os.path.join(cache_dir, "derush_report.json"), keep)
+        rep.log(f"Après vérification : {kept_s/60:.1f} min conservées, {len(keep)} plans.")
 
     # -------- qui parle + poses
     by_speaker, n_segments = None, 0
@@ -285,11 +297,11 @@ def _run_generate(job, rep, cancel):
         if tracks_map:
             speech_pre = pre.result("vad")
             segments = speech.analyze_tracks(runner, video, info, tracks_map, cache_dir, rep,
-                                             "speech", cancel=cancel, rel_db=job["vad_rel_db"],
+                                             "speech", needed=keep, cancel=cancel, rel_db=job["vad_rel_db"],
                                              speech=speech_pre)
             report_name, exact = "analysis_tracks_report.json", True
         else:
-            segments = speech.analyze_ai(runner, video, info, chunks_mix, cache_dir, rep, "speech")
+            segments = speech.analyze_ai(runner, video, info, chunks_mix, cache_dir, rep, "speech", needed=keep)
             report_name, exact = "analysis_report.json", False
         if not segments:
             raise Fail("Aucune réplique détectée dans la vidéo : regarde le journal "
@@ -388,7 +400,7 @@ def _run_edit(job, rep, cancel):
     target_dir, reg = project_dir, None
     if job["work_on_copy"]:
         rep.log("Copie du projet…", stage="prep")
-        new_name = f"{job['project']}-AutoShibi-{time.strftime('%Y%m%d-%H%M%S')}"
+        new_name = f"{job['project']}-Angora-{time.strftime('%Y%m%d-%H%M%S')}"
         target_dir = os.path.join(pdir, new_name)
         reg = capcut.clone_project(project_dir, target_dir, new_name, rep) + (new_name,)
         rep.log(f"Travail sur la copie : {new_name}", stage="prep")

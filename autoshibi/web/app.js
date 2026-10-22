@@ -1,4 +1,4 @@
-/* AutoShibi Studio 2 — interface (vanilla JS, aucun CDN : fonctionne hors-ligne) */
+/* Angora Studio — interface (vanilla JS, aucun CDN : fonctionne hors-ligne) */
 "use strict";
 
 const $ = (s, r=document) => r.querySelector(s);
@@ -12,9 +12,9 @@ const PRESETS = {
   shibis:{zoom:false,shibi:true},
 };
 const LEVEL_HINTS = {
-  1:"Léger : ne retire que les erreurs, le hors-sujet et les longs blancs (> 4 s).",
-  2:"Normal : retire aussi les hésitations longues et les temps morts (> 2,5 s).",
-  3:"Serré : très rythmé, environ 1/4 de la vidéo supprimée (temps morts dès 1,5 s, passages sans intérêt).",
+  1:"Léger : ~10-15 % supprimé — erreurs, hors-sujet, blancs >4 s. Plus sévère qu'avant.",
+  2:"Normal : ~20-25 % — + hésitations, temps morts >2,5 s et passages mous condensés.",
+  3:"Serré : ~30-35 % ultra-rythmé via micro-coupes 2-8 s — coupe tout ce qui n'est pas drôle/informatif.",
 };
 
 const S = {
@@ -22,7 +22,19 @@ const S = {
   tracks:null, running:false, finished:false, es:null,
   stages:{}, stageOrder:[], tasks:new Map(), lastEvent:0, elapsedBase:0, elapsedAt:0,
   summary:null, galleryLoaded:false, poseTimer:null, checkOnly:false,
+  theme: localStorage.getItem("autoshibi_theme") || "light",
 };
+
+/* Update the tab only on integer progress or lifecycle changes; no polling. */
+let tabProgress = 0, tabState = "idle";
+function updateTabTitle(progress=null, state=null){
+  if(progress!==null && Number.isFinite(Number(progress))) tabProgress=Math.max(0,Math.min(100,Math.round(Number(progress))));
+  if(state!==null) tabState=state;
+  const suffix={paused:" — À vérifier",done:" — Terminé",error:" — Erreur",cancelled:" — Arrêté"}[tabState]||"";
+  const title=tabState==="idle"?"Angora Studio — Montage automatique CapCut":
+    `${tabState==="running"||tabState==="paused"||tabState==="done"?tabProgress+"% ":""}Angora Studio${suffix}`;
+  if(document.title!==title) document.title=title;
+}
 
 /* ---------------- utilitaires ---------------- */
 async function api(path, method="GET", body=null){
@@ -50,6 +62,14 @@ function fmtDate(ts){
   return new Date(ts*1000).toLocaleDateString("fr-FR",{day:"numeric",month:"short"}) +
          " " + new Date(ts*1000).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
 }
+function applyTheme(t){
+  document.documentElement.setAttribute("data-theme", t);
+  localStorage.setItem("autoshibi_theme", t);
+  S.theme = t;
+  const b = $("#btnTheme"); if(b) b.textContent = t==="dark" ? "☀️" : "🌙";
+  b.title = t==="dark" ? "Passer en clair" : "Passer en sombre";
+}
+function toggleTheme(){ applyTheme(S.theme==="dark" ? "light" : "dark"); }
 function fmtSize(b){
   if(b==null) return "";
   if(b > 1e9) return (b/1e9).toFixed(1)+" Go";
@@ -87,11 +107,13 @@ function renderControls(){
   $("#inVideoEdit").value = S.videoEdit || "";
   $("#swCopy").checked = !!j.work_on_copy;
   $("#copyHint").textContent = j.work_on_copy
-    ? "Ton projet d’origine n’est pas touché : le résultat est un nouveau projet « -AutoShibi- »."
+    ? "Ton projet d’origine n’est pas touché : le résultat est un nouveau projet « -Angora- »."
     : "Décoché : le projet est modifié directement — une sauvegarde de son état actuel est faite juste avant.";
   if($("#selTemplate").value !== j.template) $("#selTemplate").value = j.template;
   if($("#selTemplateEdit").value !== j.template) $("#selTemplateEdit").value = j.template;
 
+  $("#chkManualVerify").checked = !!j.manual_verify;
+  $("#chkManualVerify").disabled = !j.derush;
   // dérush
   $("#swDerush").checked = !!j.derush;
   $("#cardDerush").classList.toggle("off", !j.derush);
@@ -183,6 +205,7 @@ function updateSummary(){
     lines.push(`<li>Projet créé en clonant <b>${j.template || "AutoShibi-V4"}</b></li>`);
     lines.push(j.derush ? `<li>Dérush niveau <b>${j.derush_level}/3</b>, pauses ≤ ${num(j.max_pause_s)} s</li>`
                         : "<li>Sans dérush : toute la vidéo est gardée</li>");
+    if(j.derush && j.manual_verify) lines.push("<li>⏸ Vérification manuelle avant les shibis et zooms</li>");
   } else {
     lines.push(`<li>Projet <b>${j.project || "—"}</b> ${j.work_on_copy ? "copié puis modifié" : "modifié directement (sauvegarde avant)"}</li>`);
     if(S.projectInfo) lines.push(`<li>${S.projectInfo.clips} plans · ${fmtDur(S.projectInfo.duration_s)} de timeline</li>`);
@@ -395,6 +418,7 @@ async function pickNative(kind){
 function clientStages(job){
   const st = [["prep","Préparation"]];
   if(job.mode==="generate") st.push(["derush", job.derush ? "Dérush" : "Découpage des plans"]);
+  if(job.mode==="generate" && job.derush && job.manual_verify) st.push(["verify","Vérifier les coupes"]);
   if(job.shibi && job.shibi_source!=="off"){ st.push(["speech","Qui parle ?"], ["poses","Choix des poses"]); }
   st.push(["capcut","Projet CapCut"]);
   return st;
@@ -443,6 +467,7 @@ function applyEvent(ev){
   if(ev.elapsed!=null){ S.elapsedBase = ev.elapsed; S.elapsedAt = Date.now(); }
   if(ev.progress!=null){
     const p = Math.round(ev.progress*100);
+    if(S.running) updateTabTitle(p);
     $("#bigBar").style.width = p + "%"; $("#bigPct").textContent = p + " %";
   }
   if(ev.type==="log") addJournal(ev);
@@ -466,12 +491,15 @@ function applyEvent(ev){
     paintTasks();
     if(ev.eta!=null) $("#chipEta").textContent = "~" + fmtDur(ev.eta);
   }
+  else if(ev.type==="cut_verification"){ window.CutEditor.refresh(); }
   else if(ev.type==="done"){
+    window.CutEditor.close();
     const replayed = ev.ts && (Date.now()/1000 - ev.ts) > 15;   // historique rejoué après réouverture
     finishUI(ev, replayed);
   }
 }
 function finishUI(ev, replayed=false){
+  updateTabTitle(ev.status==="ok"?100:null, ev.status==="ok"?"done":ev.status==="cancelled"?"cancelled":"error");
   S.running = false; S.finished = true; S.summary = ev.summary||{};
   $("#btnCancel").hidden = true; $("#cancelHint").hidden = true;
   $("#btnBackSetup").hidden = false;
@@ -521,6 +549,7 @@ function finishUI(ev, replayed=false){
   paintTasks();
 }
 function showRunView(checkOnly){
+  updateTabTitle(0,"running");
   S.checkOnly = checkOnly; S.running = true; S.finished = false;
   $("#viewSetup").hidden = true; $("#viewRun").hidden = false;
   $("#runTitle").textContent = checkOnly ? "Vérification en cours…" : "Montage en cours…";
@@ -592,12 +621,17 @@ function bindCheck(sel, key, recipe=true, extra=null){
 }
 function renderControlsSoft(){ /* rafraîchit états dépendants sans perdre le focus */
   const j = S.job;
+  $("#chkManualVerify").disabled = !j.derush;
   $("#cardDerush").classList.toggle("off", !j.derush);
   $("#bodyZoom").closest(".card").classList.toggle("off", !j.zoom);
   $("#bodyShibi").closest(".card").classList.toggle("off", !j.shibi);
   updateSummary();
 }
 function bindAll(){
+  bindCheck("#chkManualVerify", "manual_verify", false);
+  // thème
+  applyTheme(S.theme);
+  $("#btnTheme").onclick = toggleTheme;
   $("#modeGenerate").onclick = ()=>{ if(S.job.mode!=="generate"){ S.job.mode="generate"; renderControls(); changed(false); } };
   $("#modeEdit").onclick = ()=>{ if(S.job.mode!=="edit"){ S.job.mode="edit"; renderControls(); changed(false);
     if(S.job.project && S.projects.some(p=>p.name===S.job.project)) selectProject(S.job.project);
@@ -618,7 +652,7 @@ function bindAll(){
   bindCheck("#chkRepick","repick"); bindCheck("#chkClose","close_capcut",false);
   bindCheck("#chkOpen","open_capcut",false); bindCheck("#chkFresh","fresh",false);
   bindCheck("#swCopy","work_on_copy",false, ()=>{ $("#copyHint").textContent = S.job.work_on_copy
-    ? "Ton projet d’origine n’est pas touché : le résultat est un nouveau projet « -AutoShibi- »."
+    ? "Ton projet d’origine n’est pas touché : le résultat est un nouveau projet « -Angora- »."
     : "Décoché : le projet est modifié directement — une sauvegarde de son état actuel est faite juste avant."; });
   bindCheck("#chkSwap","swap_sides",true, ()=>updateStagePreview(false));
 
@@ -666,7 +700,7 @@ function bindAll(){
     e.target.disabled = true; e.target.textContent = "Arrêt en cours…";
     await api("/api/cancel", "POST", {});
   };
-  const back = ()=>{ $("#viewRun").hidden = true; $("#viewSetup").hidden = false; if(S.es) S.es.close(); refreshPreflight(); };
+  const back = ()=>{ updateTabTitle(0,"idle"); $("#viewRun").hidden = true; $("#viewSetup").hidden = false; if(S.es) S.es.close(); refreshPreflight(); };
   $("#btnBackSetup").onclick = back; $("#btnRetry").onclick = back; $("#btnAgainDone").onclick = back;
   $("#btnCopyLog").onclick = ()=>{
     const txt = $$("#journal .j-line").map(l=>l.textContent).join("\n");
@@ -738,6 +772,7 @@ function refreshKeyPill(present, hint){
       st.snapshot.stages.forEach(s=>{ S.stages[s.id] = {...(S.stages[s.id]||{}), ...s}; paintStage(s.id); });
       $("#bigBar").style.width = Math.round((st.snapshot.progress||0)*100)+"%";
       $("#bigPct").textContent = Math.round((st.snapshot.progress||0)*100)+" %";
+      updateTabTitle((st.snapshot.progress||0)*100,"running");
     }
     // l'historique complet arrive par le flux d'événements
     if(!st.running && st.snapshot.finished){ /* le done sera réémis via history */ }

@@ -1,5 +1,5 @@
 @echo off
-rem AutoShibi Studio 2 avec la console visible : utile pour voir les erreurs en cas de souci.
+rem Angora Studio avec la console visible : utile pour voir les erreurs en cas de souci.
 chcp 65001 >nul
 cd /d "%~dp0"
 python -c "import google.genai, dotenv, psutil" >nul 2>nul

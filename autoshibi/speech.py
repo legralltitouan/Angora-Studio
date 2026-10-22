@@ -20,6 +20,14 @@ from . import config, media, gemini as gm
 
 SPEAKERS = config.SPEAKERS
 
+def norm_speaker(s):
+    s = str(s or "").lower()
+    if "omg" in s:
+        return "AgentOMG"
+    if "marv" in s:
+        return "Marvouch"
+    return None
+
 TRACK_PROMPT = """Cet audio est le micro d'UNE SEULE personne : __NAME__, un streamer Minecraft qui joue avec
 __OTHER__. N'invente RIEN : s'il ne parle pas, ne renvoie rien. Ignore toute voix lointaine ou faible
 d'une autre personne (écho du micro voisin) et les bruits de jeu.
@@ -249,6 +257,23 @@ def analyze_tracks(runner, video, info, tracks_map, cache_dir, rep, stage="speec
     return result
 
 
+def _nearest_speaker(gap_s, gap_e, segments):
+    """Pour un trou sans locuteur détecté en mode IA : le locuteur le plus proche dans le temps."""
+    best, best_d = None, float("inf")
+    for seg in segments:
+        spk = norm_speaker(seg.get("speaker"))
+        if not spk:
+            continue
+        try:
+            s, e = float(seg["start_time"]), float(seg["end_time"])
+        except (TypeError, ValueError):
+            continue
+        d = min(abs(gap_s - e), abs(gap_e - s), abs((s+e)/2 - (gap_s+gap_e)/2))
+        if d < best_d:
+            best, best_d = spk, d
+    return best or "AgentOMG"
+
+
 def analyze_ai(runner, video, info, chunks_mix, cache_dir, rep, stage="speech", needed=None):
     """Mode secours : Gemini écoute le mix et devine qui parle (audio seul)."""
     cache_file = os.path.join(cache_dir, "analysis_chunks.json")
@@ -284,6 +309,39 @@ def analyze_ai(runner, video, info, chunks_mix, cache_dir, rep, stage="speech", 
                 continue
             all_segments.append(seg)
     all_segments.sort(key=lambda x: x["start_time"])
+
+    # --- filet de sécurité v2.1 : si Gemini a oublié une réplique mais qu'on
+    # entend bien quelqu'un parler sur le mix, on pose quand même un shibi neutre
+    # (au lieu de laisser 20 s de vide). Évite les trous observés en mode IA.
+    try:
+        speech_mix, _info = media.detect_speech(video, 0, media.vad_params(), cancel=None)
+        if speech_mix:
+            if needed is not None:
+                # on ne comble que dans les zones réellement utilisées du projet
+                speech_mix = [iv for iv in speech_mix if media.overlap_total([iv], needed) > 0.05]
+            covered = media.merge_ranges([
+                (float(s["start_time"]), float(s["end_time"]))
+                for s in all_segments if norm_speaker(s.get("speaker")) and s.get("start_time") is not None
+            ])
+            filled = 0
+            for iv in speech_mix:
+                for s, e in _minus(iv, covered):
+                    if e - s < 0.4:
+                        continue
+                    spk = _nearest_speaker(s, e, all_segments)
+                    all_segments.append({
+                        "start_time": round(s, 3), "end_time": round(e, 3),
+                        "speaker": spk, "text": "", "emotion": "neutre",
+                        "intensity": 1, "intent": "", "exact": True, "fallback": True,
+                    })
+                    filled += 1
+                    covered = media.merge_ranges(covered + [(s, e)])
+            if filled:
+                all_segments.sort(key=lambda x: x["start_time"])
+                rep.log(f"Mode IA : {filled} trou(s) sans shibi comblé(s) par la détection de voix (évite les passages muets).", stage=stage)
+    except Exception as e:
+        rep.warn(f"Filet anti-trou IA ignoré ({e}).", stage=stage)
+
     missing = [c.index + 1 for c in chunks_mix
                if c.duration >= media.MIN_CHUNK_S and str(c.index) not in cache["chunks"]
                and (needed is None or media.overlap_total(needed, [(c.offset, c.offset + c.duration)]) > 0)]

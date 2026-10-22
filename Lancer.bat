@@ -1,5 +1,5 @@
 @echo off
-rem AutoShibi Studio 2 : double-clique sur ce fichier pour ouvrir l'interface.
+rem Angora Studio : double-clique sur ce fichier pour ouvrir l'interface.
 chcp 65001 >nul
 cd /d "%~dp0"
 

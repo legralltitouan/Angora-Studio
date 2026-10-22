@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AutoShibi Studio — Montage automatique CapCut</title>
+<title>Angora Studio — Montage automatique CapCut</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -19,7 +19,7 @@
       </svg>
     </div>
     <div>
-      <h1>AutoShibi Studio</h1>
+      <h1>Angora Studio</h1>
       <p>Dérush · zooms · shibis — vers CapCut</p>
     </div>
   </div>
@@ -27,6 +27,7 @@
     <span id="pillDemo" class="pill pill-demo" hidden>◆ Mode démo — aperçu</span>
     <span id="pillKey" class="pill">Clé Gemini…</span>
     <span id="pillFfmpeg" class="pill">ffmpeg…</span>
+    <button id="btnTheme" class="btn btn-ghost" type="button" title="Basculer clair/sombre">🌙</button>
     <button id="btnGuide" class="btn btn-ghost" type="button">Guide</button>
     <span id="savedHint" class="saved-hint" aria-live="polite"></span>
   </div>
@@ -96,7 +97,7 @@
 
         <label class="switch-row">
           <span class="switch"><input type="checkbox" id="swCopy"><span></span></span>
-          <span><strong>Travailler sur une copie</strong><br><small id="copyHint">Ton projet d’origine n’est pas touché&nbsp;: le résultat est un nouveau projet «&nbsp;-AutoShibi-&nbsp;».</small></span>
+          <span><strong>Travailler sur une copie</strong><br><small id="copyHint">Ton projet d’origine n’est pas touché&nbsp;: le résultat est un nouveau projet «&nbsp;-Angora-&nbsp;».</small></span>
         </label>
 
         <div class="field-row">
@@ -155,6 +156,8 @@
             <input type="range" id="rgMaxShot" min="3" max="15" step="0.5">
             <p class="hint">Un plan plus long est découpé dans un silence&nbsp;: plus de plans = zooms plus fréquents.</p>
           </div>
+          <label class="switch-row" style="margin-top:18px"><span class="switch"><input type="checkbox" id="chkManualVerify"><span></span></span><span><b>Vérifier les coupes avant de générer le montage</b><br><small class="opt">Timeline interactive, sans rendu vidéo. Ajuste le dérush avant les shibis et les zooms.</small></span></label>
+
         </div>
       </div>
 
@@ -244,7 +247,7 @@
           </div>
           <label class="check-row"><input type="checkbox" id="chkSwap"> Inverser les côtés (Marvouch à droite, AgentOMG à gauche)</label>
           <label class="check-row" id="rowReplace"><input type="checkbox" id="chkReplace"> Remplacer les shibis déjà posés par une exécution précédente</label>
-          <label class="check-row"><input type="checkbox" id="chkRepick"> Refaire le choix des poses <small class="opt">(sinon le choix déjà fait pour cette vidéo est réutilisé)</small></label>
+          <label class="check-row"><input type="checkbox" id="chkRepick" aria-describedby="repickHelp"><span class="repick-label"><span>Choisir à nouveau les poses des shibis</span><small class="opt" id="repickHelp">Redemande une sélection à l’IA, même si elle est en cache. Sinon, les choix compatibles avec ce montage sont réutilisés. Ne refait pas le dérush.</small></span></label>
 
           <details class="accordion" id="galleryDetails">
             <summary>Voir les 22 poses de chaque personnage</summary>
@@ -322,6 +325,20 @@
       <div class="big-progress"><div id="bigBar" class="big-bar"></div><span id="bigPct">0&nbsp;%</span></div>
       <ol id="stageList" class="stages"></ol>
 
+      <section id="cutEditor" class="cut-editor" hidden aria-label="Vérifier le dérush">
+        <div class="cut-heading"><div><span class="cut-eyebrow">À TOI DE JOUER · AVANT SHIBIS & ZOOMS</span><h2>Vérifier le dérush</h2><p class="hint">La sélection suit la lecture : garde ou coupe le passage en cours sans mettre en pause. Glisse une frontière pour l’ajuster.</p></div><span class="chip">⏸ En attente de toi</span></div>
+        <div class="cut-summary" id="cutSummary"></div>
+        <details class="cut-player"><summary>▶ Lire la vidéo source · sans conversion</summary><video id="cutVideo" controls preload="none"></video><p class="hint" id="cutVideoHint">La lecture dépend du codec du fichier. Aucun rendu n’est lancé si le navigateur ne le lit pas.</p><label class="check-row tiny"><input type="checkbox" id="cutSkip" checked> Sauter les passages coupés pendant la lecture</label><p class="hint">Décoche cette option pour lire aussi les passages retirés et les restaurer à la volée.</p></details>
+        <div class="cut-tools"><button class="btn btn-secondary btn-small" id="cutUndo" title="Ctrl+Z">↶ Annuler</button><button class="btn btn-ghost btn-small" id="cutRedo" title="Ctrl+Maj+Z">↷ Rétablir</button><span class="cut-spacer"></span><label class="check-row tiny"><input id="cutSnap" type="checkbox" checked> Aimant silences</label><button class="btn btn-ghost btn-small" id="cutZoomOut" aria-label="Dézoomer">−</button><span id="cutZoomLabel">Vue entière</span><button class="btn btn-ghost btn-small" id="cutZoomIn" aria-label="Zoomer">+</button></div>
+        <div class="cut-canvas-wrap"><canvas id="cutCanvas" height="170" tabindex="0" aria-label="Timeline du dérush. Sélectionne un segment ou utilise les boutons précédent et suivant."></canvas></div>
+        <div class="cut-nav"><span id="cutViewStart">0:00</span><input id="cutPan" type="range" min="0" max="1000" value="0" aria-label="Déplacer la fenêtre de timeline"><span id="cutViewEnd"></span></div>
+        <p class="hint" id="cutWaveStatus">La timeline est prête. La forme d’onde arrive en arrière-plan.</p>
+        <div class="cut-selection"><div><b id="cutSelection">Sélectionne un segment</b><div class="hint" id="cutSnapHint">Vert = gardé · Gris hachuré = coupé · Orange = sélection</div></div><div class="cut-tools"><button class="btn btn-ghost btn-small" id="cutPrev" aria-label="Segment précédent">←</button><button class="btn btn-ghost btn-small" id="cutNext" aria-label="Segment suivant">→</button><button class="btn btn-secondary btn-small" id="cutToggle">Garder / Couper</button><button class="btn btn-ghost btn-small" id="cutSplit">Scinder au curseur</button></div></div>
+        <div class="cut-footer"><button class="btn btn-ghost btn-small" id="cutReset">Revenir au dérush IA</button><span class="hint">Modifications sauvegardées dans cet onglet · Ctrl+Z pour annuler</span><button class="btn btn-primary" id="cutCommit">Valider et générer le montage →</button></div>
+        <p class="hint" id="cutError" role="alert"></p>
+      </section>
+
+
       <div id="donePanel" class="done-panel" hidden>
         <svg class="check-anim" viewBox="0 0 52 52"><circle cx="26" cy="26" r="24"/><path d="M15 27l7.5 7.5L37 19"/></svg>
         <h3 id="doneTitle">Montage terminé 🎉</h3>
@@ -349,6 +366,8 @@
         <button type="button" class="btn btn-ghost" id="btnBackSetup" hidden>← Revenir aux réglages</button>
         <span class="hint" id="cancelHint">Arrêter est propre&nbsp;: le travail déjà fait est conservé en cache.</span>
       </div>
+
+
     </section>
   </div>
 
@@ -414,6 +433,7 @@
 
 <div id="toasts" class="toasts" aria-live="polite"></div>
 
+<script src="verify.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -1,4 +1,6 @@
-# AutoShibi Studio 2 — Montage automatique AgentOMG / Marvouch → CapCut
+# Angora Studio — Montage automatique AgentOMG / Marvouch → CapCut
+
+Version 2.4.3. Le projet modèle CapCut conserve son nom `AutoShibi-V4` pour rester compatible avec les installations existantes.
 
 Version **entièrement repensée** du logiciel : même résultat final dans CapCut
 (dérush, zooms animés, shibis placés par qui-parle exact), **même qualité de
@@ -171,3 +173,39 @@ n'est plus nécessaire : le cache est toujours réutilisé.
 
 **CapCut doit être fermé pendant le traitement** (l'interface propose de le
 fermer automatiquement, réglage Avancé).
+
+## Vérifier le dérush avant les shibis et zooms
+
+Dans **La recette du montage → Dérush**, active **Vérifier les coupes avant de générer le montage**.
+L'option est mémorisée, désactivée par défaut, et disponible pour les nouveaux montages avec dérush.
+
+Ordre du traitement : préparation → dérush IA → **Vérifier** (si activé) → transcription utile → choix des poses → zooms et projet CapCut.
+La détection de voix et l'extraction audio peuvent être préparées en arrière-plan avant la validation ; aucun choix de pose ni zoom n'est généré avant.
+
+- **Vert** : gardé ; **gris hachuré** : coupé ; **orange** : sélection.
+- Clique pour sélectionner et placer le curseur, puis **Garder / Couper** (ou Suppr).
+- Glisse les petites poignées entre deux segments pour ajuster la frontière. L'aimant cherche le centre d'un silence à ±0,35 seconde ; il peut être désactivé.
+- **+ / −** zoome la timeline ; le curseur horizontal déplace la fenêtre visible.
+- **Scinder au curseur** permet de couper une partie d'un segment, puis de garder/couper la nouvelle portion.
+- **Annuler / Rétablir**, Ctrl+Z / Ctrl+Maj+Z et les boutons précédent/suivant sont disponibles.
+- **Revenir au dérush IA** rétablit la proposition initiale après confirmation.
+- **Valider et générer le montage** reprend le pipeline avec les passages conservés. Les zooms et poses sont calculés sur ce nouveau montage.
+
+La timeline n'attend aucun encodage vidéo ni appel IA supplémentaire. La forme d'onde est calculée sur les extraits audio déjà disponibles, en arrière-plan, et mise en cache. Elle peut prendre quelques secondes au premier passage suivant la durée de la source et le PC, mais ne bloque pas l'édition.
+
+Le lecteur facultatif lit le fichier source directement, avec navigation HTTP Range et saut des passages coupés pendant la lecture. Certains MKV/codecs ne sont pas compatibles avec le navigateur : un message apparaît, sans conversion automatique. La timeline reste utilisable.
+
+Les ajustements sont conservés lors d'un rechargement de la page **dans le même onglet** tant que le serveur est ouvert. Ils ne sont pas conservés après un redémarrage du serveur ou pour un autre traitement. Tu peux annuler le traitement normalement pendant cette étape.
+
+La transcription Gemini travaille par tranches : une tranche partiellement gardée est encore transcrite entière pour le contexte. Les tranches entièrement supprimées sont sautées ; seuls les beats remappés sur les passages gardés sont envoyés au choix des poses. Les plans contigus peuvent être redécoupés au silence pour respecter le réglage de durée des plans et le rythme des zooms.
+
+Tests : `python tests/verification_test.py`, `python tests/e2e_fake.py` et, pour tester une restauration/suppression avant génération, `ANGORA_TEST_VERIFY=1 python tests/e2e_fake.py` (Linux/macOS ; sous Windows, définir la variable d'environnement avant la commande).
+
+### Correctif 2.4.1
+La validation accepte les intervalles positifs courts et tolère les petits arrondis aux extrémités de la vidéo. Le seuil de 40 ms reste une aide de manipulation, pas un motif de rejet des coupes existantes.
+
+### Interface 2.4.2
+Contraste dark mode corrigé pour les résultats et le bandeau projet ; cases arrondies adaptées aux thèmes ; pourcentage entier dans le titre de l’onglet mis à jour par les événements existants, sans requête supplémentaire. L’option de nouvelle sélection des poses a été clarifiée.
+
+### Lecture et sélection 2.4.3
+La sélection du dérush suit la tête de lecture, y compris les déplacements dans le lecteur. Garder/Couper agit pendant la lecture sans la mettre en pause. La fenêtre de timeline suit le curseur lorsqu’il sort de la zone visible. Pour revoir les passages coupés et les restaurer, décocher « Sauter les passages coupés pendant la lecture ». Le slider de navigation est rempli en orange uniquement à gauche de sa poignée ; il déplace la fenêtre de timeline, pas la lecture.

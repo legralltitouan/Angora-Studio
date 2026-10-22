@@ -132,39 +132,46 @@ def build_style_profile(runner, urls, out_path, rep):
 
 # ------------------------------------------------------------------ coupes
 LEVEL_RULES = {
-    1: """- hors-sujet technique : micro, launcher, installation, adresse IP, "tu m'entends ?", "attends je relance"
-- faux départs et phrases recommencées (garde la dernière prise)
-- longs blancs sans parole : plus de 4 secondes""",
+    1: """- hors-sujet technique : micro qui grésille, launcher, installation, adresse IP, "tu m'entends ?", "attends je relance"
+- faux départs et phrases recommencées (garde la dernière prise uniquement)
+- longs blancs sans parole : plus de 4 secondes
+- répétitions évidentes où ils disent 2 fois la même chose
+- OBJECTIF : léger mais utile, ~10-15 % supprimé. Sois plus sévère qu'un simple nettoyage.""",
     2: """- hors-sujet technique : micro, launcher, installation, adresse IP, "tu m'entends ?", "attends je relance"
 - faux départs, phrases recommencées, répétitions (garde la meilleure prise)
 - hésitations longues, "euh" prolongés
-- temps morts : plus de 2,5 secondes sans parole, juste du bruit de jeu""",
+- temps morts : plus de 2,5 s sans parole (bruit de jeu seul)
+- bavardage vide qui n'apporte ni rire, ni info, ni préparation narrative (commentaire plat de ce qu'ils font)
+- passages mous : farm/marche/craft où ils parlent sans punchline pendant 15-20 s → condense en gardant la meilleure phrase + réaction
+- OBJECTIF : soutenu, ~20-25 % supprimé. Sois sévère sur le filler, garde le contexte narratif.""",
     3: """- hors-sujet technique : micro, launcher, installation, adresse IP, "tu m'entends ?", "attends je relance"
 - faux départs, phrases recommencées, répétitions (garde la meilleure prise)
-- hésitations, "euh", bégaiements, silences qui traînent
-- temps morts : dès 1,5 seconde sans parole utile (bruit de jeu, déplacements silencieux, saisie de commandes)
-- tout passage sans intérêt : bavardage qui n'apporte ni rire, ni information, ni réaction ; commentaire
-  plat de ce qu'ils font ; explications qui traînent
-- OBJECTIF : une vidéo ULTRA rythmée, comme les meilleurs YouTubers : environ un quart à un tiers de
-  l'extrait doit être supprimé""",
+- hésitations, "euh", bégaiements, silences qui traînent, phrases qui tournent en rond
+- temps morts : dès 1 s sans parole utile (déplacements silencieux, saisie de commandes, craft muet, regard inventaire)
+- bavardage plat sans rire, sans info, sans tension narrative : commentaire redondant "on avance, on casse, on pose"
+- passages longs et répétitifs (farm / marche / craft / attente 20-40 s sans vanne) : NE LES GARDE PAS en entier. CONDENSE-LES : garde les 2-3 meilleures phrases / rires / réactions + 1 s de contexte avant/après chacune, coupe impitoyablement le remplissage entre elles
+- tout ce qui n'est pas drôle, informatif ou tendu → dehors
+- OBJECTIF : très rythmé, ~30-35 % supprimé via beaucoup de micro-coupes 2-8 s (jamais >12 s d'un coup). Ultra dynamique comme les meilleurs YouTubers""",
 }
 
-DERUSH_PROMPT = """Tu es monteur vidéo YouTube. Voici l'audio brut d'un enregistrement de deux joueurs Minecraft
-(AgentOMG et Marvouch). Style de montage visé : __STYLE__
+DERUSH_PROMPT = """Tu es monteur vidéo YouTube pour deux streamers Minecraft (AgentOMG et Marvouch). Style visé : __STYLE__
 Niveau de coupe : __LEVEL__ sur 3.
 
-Découpe TOUT l'extrait en segments consécutifs (de 1 à 15 secondes, sans trou) et décide pour CHACUN :
-garder (keep=true) ou supprimer (keep=false).
+MISSION : Découpe TOUT l'extrait en segments de 2 à 8 secondes (sans trou, sans chevauchement) et décide pour CHACUN : garder (keep=true) ou supprimer (keep=false).
 
-À SUPPRIMER :
+REGLES D'OR — À RESPECTER ABSOLUMENT :
+1. JAMAIS DE GROS BLOC : ne mets JAMAIS keep=false sur plus de 12 s d'affilée. Si un passage de 30 s est globalement ennuyeux mais contient 1 blague / info / réaction au milieu, tu DOIS découper : [avant=false] [blague+1s de contexte avant/après=true] [après=false].
+2. CONTEXTE SACRE : garde toujours 1 à 1,5 s avant une blague/réaction et 0,5-1 s après. Ne coupe jamais au milieu d'une phrase gardée.
+3. CONDENSATION DES LONGUEURS : si un passage de 20-40 s n'a qu'une faible densité (farm, marche, craft, discussion plate sans punchline), tu DOIS y faire des trous : garde seulement les phrases qui apportent rire / info / réaction / tension, supprime le filler entre elles. Ne laisse pas une longue tirade plate intacte.
+4. GRANULARITE 2-8 s : préfère 3 segments de 4 s (keep true/false/true) à 1 segment de 12 s (keep false) qui écraserait un moment intéressant.
+
+À SUPPRIMER selon le niveau :
 __RULES__
 
-À GARDER TOUJOURS : blagues, rires, cris, réactions, moments marquants, informations utiles à l'histoire,
-même brefs. Ne coupe jamais au milieu d'une phrase que tu gardes.
-Timestamps en secondes depuis le début de CET extrait, précision 0.1 s.
+À GARDER TOUJOURS : blagues, rires, cris, réactions même brèves, infos utiles à l'histoire, préparations qui rendent une future blague compréhensible. Si hésitation : GARDE.
 
-Réponds en JSON pur (tableau couvrant tout l'extrait) :
-[{"start": 0.0, "end": 4.2, "keep": true, "why": ""}, {"start": 4.2, "end": 9.8, "keep": false, "why": "temps mort"}]"""
+Timestamps en secondes depuis le début de CET extrait, précision 0,1 s. Réponds en JSON pur (tableau couvrant tout l'extrait) :
+[{"start": 0.0, "end": 3.8, "keep": true, "why": ""}, {"start": 3.8, "end": 7.2, "keep": false, "why": "filler entre deux vannes"}]"""
 
 
 def _derush_prompt(style, level):
@@ -251,9 +258,12 @@ def plan_cuts(chunks, cache, silences, style, total, rep):
             raw_cuts.append((a, b, str(c.get("why", c.get("reason", "")))))
 
     removes, n_sil, n_margin, ignored = [], 0, 0, []
+    long_cuts = []
     for a, b, reason in sorted(raw_cuts):
         if b - a < 0.8:
             continue
+        if b - a > 12.0:
+            long_cuts.append((a, b, reason))
         if b - a > MAX_CUT_S:
             ignored.append((a, b, "trop longue", reason))
             continue
@@ -275,6 +285,9 @@ def plan_cuts(chunks, cache, silences, style, total, rep):
     rep.log(f"Coupes Gemini : {len(raw_cuts)} proposées → {len(gem)} appliquées "
             f"({n_sil} calées sur un silence, {n_margin} avec marge de sécurité), "
             f"{len(ignored)} ignorées, {gem_len:.0f} s retirées.")
+    if long_cuts:
+        rep.warn(f"{len(long_cuts)} coupe(s) >12 s proposée(s) par Gemini (ex: {long_cuts[0][0]:.1f}–{long_cuts[0][1]:.1f} s : {long_cuts[0][2][:60]}). "
+                 "Vérifie le rendu : le nouveau prompt interdit les gros blocs, ces coupes devraient disparaître au prochain passage sans cache (ou vide le cache vidéo).", stage="derush")
     for a, b, why, reason in ignored[:6]:
         rep.log(f"· coupe ignorée ({why}) {a:.1f}–{b:.1f} s : {reason[:70]}")
     pause_len = sum(y - x for x, y in media.merge_ranges(removes)) - gem_len

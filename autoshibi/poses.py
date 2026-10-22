@@ -227,10 +227,10 @@ def heuristic_candidates(b):
     return _unique(cands + rest)
 
 
-def _ask_candidates(runner, beats, rep, stage, cache_file=None, key=None):
+def _ask_candidates(runner, beats, rep, stage, cache_file=None, key=None, force=False):
     """Candidats Gemini par beat, lots de 30 EN PARALLÈLE, cache par lot."""
     cands, saved = {}, {}
-    if cache_file and os.path.exists(cache_file):
+    if cache_file and not force and os.path.exists(cache_file):
         try:
             with open(cache_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -332,7 +332,7 @@ def choose(runner, beats, rep, stage="poses", cache_path=None, force=False, max_
                 data = json.load(f)
             if data.get("key") == key:
                 rep.log(f"Poses : plan rechargé depuis le cache ({len(data['plan'])} shibis). "
-                        "Coche « Refaire le choix des poses » pour le régénérer.", stage=stage)
+                        "Coche « Choisir à nouveau les poses des shibis » pour le régénérer.", stage=stage)
                 rep.stage_units(stage, 1)
                 rep.stage_tick(stage)
                 return data["plan"]
@@ -340,7 +340,7 @@ def choose(runner, beats, rep, stage="poses", cache_path=None, force=False, max_
             pass
     rep.log(f"Choix des poses pour {len(beats)} beats…", stage=stage)
     cands = _ask_candidates(runner, beats, rep, stage,
-                            cache_file=(cache_path + ".lots") if cache_path else None, key=key)
+                            cache_file=(cache_path + ".lots") if cache_path else None, key=key, force=force)
     plan = _assign(beats, cands, max_hold)
     if cache_path:
         with open(cache_path, "w", encoding="utf-8") as f:

@@ -24,7 +24,7 @@ def _console_sink(ev):
 
 
 def parse_args(argv=None):
-    p = argparse.ArgumentParser(description="AutoShibi Studio 2 — génération d'un projet CapCut "
+    p = argparse.ArgumentParser(description="Angora Studio — génération d'un projet CapCut "
                                             "(dérush + zooms + shibis) à partir d'une vidéo")
     p.add_argument("--video", help="vidéo à monter (défaut : VIDEO_FILE de .env, sinon video.mkv à côté du logiciel)")
     p.add_argument("--check", action="store_true", help="vérifie l'installation, sans rien générer")

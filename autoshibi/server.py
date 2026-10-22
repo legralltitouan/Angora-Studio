@@ -13,11 +13,12 @@ import queue
 import shutil
 import threading
 import subprocess
+import re
 import mimetypes
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-from . import config, media, capcut, projedit, checks, pipeline as pipe
+from . import verification, config, media, capcut, projedit, checks, pipeline as pipe
 from .events import Reporter, CancelToken
 from . import __version__
 
@@ -265,6 +266,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("app.css", "text/css; charset=utf-8")
             if u.path == "/app.js":
                 return self._static("app.js", "text/javascript; charset=utf-8")
+            if u.path == "/verify.js":
+                return self._static("verify.js", "text/javascript; charset=utf-8")
+            if u.path == "/api/verify":
+                return self._send(200, verification.state())
+            if u.path == "/api/verify/source":
+                return self._source((q.get("id") or [""])[0])
             if u.path == "/api/bootstrap":
                 return self._send(200, bootstrap())
             if u.path == "/api/state":
@@ -295,6 +302,41 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, {"error": f"{type(e).__name__}: {e}"})
             except Exception:
                 pass
+
+    def _source(self, session_id):
+        path = verification.source_path(session_id)
+        if not path or not os.path.isfile(path):
+            return self._send(404, {"error": "Source indisponible"})
+        size = os.path.getsize(path)
+        start, end, partial = 0, size - 1, False
+        value = self.headers.get("Range")
+        if value:
+            match = re.fullmatch(r"bytes=(\d*)-(\d*)", value.strip())
+            if not match or not any(match.groups()):
+                self.send_response(416); self.send_header("Content-Range", f"bytes */{size}"); self.send_header("Content-Length", "0"); self.end_headers(); return
+            a, b = match.groups()
+            if a:
+                start = int(a); end = min(int(b), size-1) if b else size-1
+            else:
+                start = max(0, size-int(b))
+            if start > end or start >= size:
+                self.send_response(416); self.send_header("Content-Range", f"bytes */{size}"); self.send_header("Content-Length", "0"); self.end_headers(); return
+            partial = True
+        self.send_response(206 if partial else 200)
+        self.send_header("Content-Type", mimetypes.guess_type(path)[0] or "application/octet-stream")
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(end-start+1))
+        self.send_header("Cache-Control", "no-store")
+        if partial:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.end_headers()
+        with open(path, "rb") as f:
+            f.seek(start)
+            remaining = end-start+1
+            while remaining > 0:
+                block = f.read(min(262144, remaining))
+                if not block: break
+                self.wfile.write(block); remaining -= len(block)
 
     def _static(self, name, ctype):
         path = os.path.join(WEB_DIR, name)
@@ -403,6 +445,9 @@ class Handler(BaseHTTPRequestHandler):
                 job = body.get("job") or {}
                 job["action"] = "check"
                 return self._send(200, start_job(job, body.get("api_key") or ""))
+            if u.path == "/api/verify/commit":
+                result = verification.decide(body.get("id"), body.get("keep"))
+                return self._send(200 if result["ok"] else 400, result)
             if u.path == "/api/cancel":
                 with _LOCK:
                     cancel = _STATE["cancel"]
