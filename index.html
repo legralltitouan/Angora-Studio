@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoShibi Studio — Montage automatique CapCut</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo" aria-hidden="true">
+      <svg viewBox="0 0 48 48" width="34" height="34">
+        <circle cx="17" cy="18" r="8.5" fill="#5B8DEF"/>
+        <circle cx="32" cy="18" r="8.5" fill="#4CB782"/>
+        <path d="M6 40c2-9 6-13 11-13 3 0 5 1.2 7 3.4C26 28.2 28.4 27 32 27c5 0 9 4 11 13z" fill="#D97757" opacity=".92"/>
+        <circle cx="14.5" cy="16.5" r="1.6" fill="#fff"/><circle cx="29.5" cy="16.5" r="1.6" fill="#fff"/>
+      </svg>
+    </div>
+    <div>
+      <h1>AutoShibi Studio</h1>
+      <p>Dérush · zooms · shibis — vers CapCut</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <span id="pillDemo" class="pill pill-demo" hidden>◆ Mode démo — aperçu</span>
+    <span id="pillKey" class="pill">Clé Gemini…</span>
+    <span id="pillFfmpeg" class="pill">ffmpeg…</span>
+    <button id="btnGuide" class="btn btn-ghost" type="button">Guide</button>
+    <span id="savedHint" class="saved-hint" aria-live="polite"></span>
+  </div>
+</header>
+
+<!-- ============================ VUE CONFIGURATION ============================ -->
+<main id="viewSetup" class="layout">
+  <div class="col-main">
+
+    <!-- Étape 1 · Source -->
+    <section class="step card-in">
+      <div class="step-head"><span class="step-num">1</span>
+        <div><h2>Que veux-tu monter&nbsp;?</h2>
+        <p class="step-sub">Pars d’un rec brut, ou laisse le logiciel terminer un montage que tu as déjà coupé à la main dans CapCut.</p></div>
+      </div>
+
+      <div class="mode-cards" role="radiogroup" aria-label="Mode">
+        <button type="button" class="mode-card" id="modeGenerate" role="radio">
+          <span class="mode-ico">✦</span>
+          <span class="mode-title">Nouveau montage automatique</span>
+          <span class="mode-desc">Depuis la vidéo brute&nbsp;: dérush intelligent, zooms et shibis dans un tout nouveau projet CapCut.</span>
+          <span class="mode-check">✓</span>
+        </button>
+        <button type="button" class="mode-card" id="modeEdit" role="radio">
+          <span class="mode-ico">✂</span>
+          <span class="mode-title">Terminer mon montage</span>
+          <span class="mode-desc">Ton dérush est déjà fait dans CapCut&nbsp;: on ajoute zooms et shibis directement sur tes plans.</span>
+          <span class="mode-check">✓</span>
+        </button>
+      </div>
+
+      <!-- mode génération -->
+      <div id="srcGenerate" class="source-panel">
+        <div id="dropVideo" class="dropzone" tabindex="0">
+          <div class="dz-ico">🎬</div>
+          <div class="dz-body">
+            <div id="videoName" class="dz-name">Aucune vidéo choisie</div>
+            <div id="videoMeta" class="dz-meta">Le fichier de ton enregistrement (.mkv, .mp4…).</div>
+          </div>
+          <div class="dz-actions">
+            <button type="button" class="btn btn-secondary" id="btnPickVideo">Parcourir…</button>
+            <button type="button" class="btn btn-ghost" id="btnBrowseVideo">Explorer</button>
+          </div>
+        </div>
+        <input id="inVideo" class="path-input mono" type="text" placeholder="Chemin de la vidéo — vide = video.mkv à côté du logiciel" spellcheck="false">
+        <div class="field-row">
+          <div class="field grow">
+            <label for="selTemplate">Projet CapCut modèle <span class="opt">(il sera cloné)</span></label>
+            <div class="with-btn"><select id="selTemplate"></select>
+              <button type="button" class="btn btn-small btn-ghost" id="btnRefreshTpl" title="Rafraîchir la liste">↻</button></div>
+            <p class="hint">Son format d’image et le format exact des zooms de TA version de CapCut sont repris. <a href="#" id="linkTemplateGuide">Comment créer le modèle&nbsp;?</a></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- mode édition -->
+      <div id="srcEdit" class="source-panel" hidden>
+        <div class="field">
+          <label>Ton projet CapCut déjà monté</label>
+          <div class="with-btn">
+            <input id="projSearch" type="search" placeholder="Rechercher un projet…" class="grow">
+            <button type="button" class="btn btn-small btn-ghost" id="btnRefreshProjects" title="Rafraîchir la liste">↻</button>
+          </div>
+        </div>
+        <div id="projectList" class="project-list" role="listbox" aria-label="Projets CapCut"></div>
+        <p id="projectInfo" class="proj-info"></p>
+
+        <label class="switch-row">
+          <span class="switch"><input type="checkbox" id="swCopy"><span></span></span>
+          <span><strong>Travailler sur une copie</strong><br><small id="copyHint">Ton projet d’origine n’est pas touché&nbsp;: le résultat est un nouveau projet «&nbsp;-AutoShibi-&nbsp;».</small></span>
+        </label>
+
+        <div class="field-row">
+          <div class="field grow">
+            <label for="selTemplateEdit">Projet modèle <span class="opt">(facultatif)</span></label>
+            <select id="selTemplateEdit"></select>
+            <p class="hint">Copie le format exact des zooms si ton projet n’a encore aucun keyframe d’échelle.</p>
+          </div>
+          <div class="field grow">
+            <label for="inVideoEdit">Vidéo source <span class="opt">(facultatif)</span></label>
+            <div class="with-btn"><input id="inVideoEdit" class="mono grow" type="text" placeholder="Vide = détectée depuis le projet" spellcheck="false">
+              <button type="button" class="btn btn-small btn-secondary" id="btnPickVideoEdit">Parcourir…</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Étape 2 · Recette -->
+    <section class="step card-in">
+      <div class="step-head"><span class="step-num">2</span>
+        <div><h2>La recette du montage</h2>
+        <p class="step-sub">Choisis une recette toute faite, ou ajuste chaque ingrédient. Tes réglages sont mémorisés automatiquement.</p></div>
+      </div>
+
+      <div id="presetRow" class="preset-row">
+        <button type="button" data-preset="equilibre" class="preset"><strong>⚖️ Équilibré</strong><small>Le montage habituel, recommandé</small></button>
+        <button type="button" data-preset="rythme" class="preset"><strong>⚡ Ultra-rythmé</strong><small>Coupes serrées, zooms partout</small></button>
+        <button type="button" data-preset="doux" class="preset"><strong>🌿 Doux</strong><small>Fidèle au rec, mouvements discrets</small></button>
+        <button type="button" data-preset="zooms" class="preset"><strong>🔍 Zooms seuls</strong><small>Sans shibis</small></button>
+        <button type="button" data-preset="shibis" class="preset"><strong>🐾 Shibis seuls</strong><small>Sans toucher aux zooms</small></button>
+      </div>
+
+      <!-- Dérush -->
+      <div class="card" id="cardDerush">
+        <div class="card-head">
+          <div><h3>Dérush automatique</h3><p>Coupe faux départs, hésitations et temps morts avant tout le reste.</p></div>
+          <label class="switch"><input type="checkbox" id="swDerush"><span></span></label>
+        </div>
+        <div class="card-body" id="bodyDerush">
+          <div class="field">
+            <label>Sensibilité de la coupe</label>
+            <div class="segmented" id="segLevel">
+              <button type="button" data-level="1">1 · Léger</button>
+              <button type="button" data-level="2">2 · Normal</button>
+              <button type="button" data-level="3">3 · Serré</button>
+            </div>
+            <p class="hint" id="levelHint"></p>
+          </div>
+          <div class="slider" data-slider>
+            <div class="slider-top"><label for="rgMaxPause">Pause maxi conservée</label><output id="outMaxPause"></output></div>
+            <input type="range" id="rgMaxPause" min="0.2" max="1.5" step="0.05">
+            <p class="hint">Une pause de parole plus longue est raccourcie.</p>
+          </div>
+          <div class="slider" data-slider>
+            <div class="slider-top"><label for="rgMaxShot">Durée maxi d’un plan</label><output id="outMaxShot"></output></div>
+            <input type="range" id="rgMaxShot" min="3" max="15" step="0.5">
+            <p class="hint">Un plan plus long est découpé dans un silence&nbsp;: plus de plans = zooms plus fréquents.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Zooms -->
+      <div class="card">
+        <div class="card-head">
+          <div><h3>Zooms / dézooms</h3><p>Chaque plan bouge lentement — vrais keyframes CapCut, retouchables ensuite.</p></div>
+          <label class="switch"><input type="checkbox" id="swZoom"><span></span></label>
+        </div>
+        <div class="card-body" id="bodyZoom">
+          <div class="slider" data-slider>
+            <div class="slider-top"><label for="rgZoomCoverage">Fréquence</label><output id="outZoomCoverage"></output></div>
+            <input type="range" id="rgZoomCoverage" min="0" max="1" step="0.05">
+            <p class="hint">Part des plans animés&nbsp;; les autres restent fixes.</p>
+          </div>
+          <div class="slider" data-slider>
+            <div class="slider-top"><label for="rgZoomIntensity">Intensité</label><output id="outZoomIntensity"></output></div>
+            <input type="range" id="rgZoomIntensity" min="0" max="2" step="0.1">
+            <p class="hint">Amplitude typique du zoom (100&nbsp;→&nbsp;110&nbsp;% par défaut).</p>
+          </div>
+          <div class="slider" data-slider>
+            <div class="slider-top"><label for="rgZoomOut">Part de dézooms</label><output id="outZoomOut"></output></div>
+            <input type="range" id="rgZoomOut" min="0" max="1" step="0.05">
+            <p class="hint">Le reste&nbsp;: zooms avant. Les deux alternent la plupart du temps.</p>
+          </div>
+          <label class="check-row" id="rowKeepZoom"><input type="checkbox" id="chkKeepZoom"> Ne pas toucher aux plans qui ont déjà un zoom animé</label>
+        </div>
+      </div>
+
+      <!-- Shibis -->
+      <div class="card">
+        <div class="card-head">
+          <div><h3>Shibis <span class="who"><i class="dot dot-bleu"></i>Marvouch</span> <span class="who"><i class="dot dot-vert"></i>AgentOMG</span></h3>
+          <p>Le personnage qui parle apparaît dans le coin, avec une pose choisie selon le texte et le ton.</p></div>
+          <label class="switch"><input type="checkbox" id="swShibi"><span></span></label>
+        </div>
+        <div class="card-body" id="bodyShibi">
+          <div class="field">
+            <label>Comment savoir qui parle&nbsp;?</label>
+            <div class="segmented grow" id="segSource">
+              <button type="button" data-source="tracks">🎚️ Pistes audio séparées <small>exact</small></button>
+              <button type="button" data-source="ai">✨ L’IA devine <small>1 seule piste</small></button>
+            </div>
+          </div>
+
+          <div id="tracksPanel">
+            <div class="field-row">
+              <div class="field grow"><label for="selTrackOmg"><i class="dot dot-vert"></i> Piste d’AgentOMG</label>
+                <select id="selTrackOmg"></select></div>
+              <div class="field grow"><label for="selTrackMarv"><i class="dot dot-bleu"></i> Piste de Marvouch</label>
+                <select id="selTrackMarv"></select></div>
+            </div>
+            <button type="button" class="btn btn-secondary btn-small" id="btnDetectTracks">🔍 Détecter les pistes de la vidéo</button>
+            <div id="trackLevels" class="track-levels"></div>
+            <p class="hint" id="tracksHint">La piste 1 est en général le mix global&nbsp;; une piste par personne ensuite.</p>
+            <div class="slider" data-slider>
+              <div class="slider-top"><label for="rgVad">Sensibilité de la voix</label><output id="outVad"></output></div>
+              <input type="range" id="rgVad" min="12" max="40" step="1">
+              <p class="hint">Plus bas = plus strict (ignore les fuites de micro)&nbsp;; plus haut = capte les voix très basses.</p>
+            </div>
+          </div>
+
+          <div class="stage-wrap">
+            <div class="stage" id="stage">
+              <div class="stage-game"></div>
+              <img id="stageMarv" class="stage-shibi" alt="Aperçu Marvouch">
+              <img id="stageOmg" class="stage-shibi" alt="Aperçu AgentOMG">
+              <span class="stage-name" id="stageNameMarv">Marvouch</span>
+              <span class="stage-name" id="stageNameOmg">AgentOMG</span>
+            </div>
+            <p class="hint center">Aperçu en direct de la taille et des côtés (les poses changent au fil des répliques).</p>
+          </div>
+
+          <div class="slider" data-slider>
+            <div class="slider-top"><label for="rgShibiScale">Taille des shibis</label><output id="outShibiScale"></output></div>
+            <input type="range" id="rgShibiScale" min="0.5" max="1.5" step="0.05">
+          </div>
+          <div class="slider" data-slider>
+            <div class="slider-top"><label for="rgLinger">Rester après la voix</label><output id="outLinger"></output></div>
+            <input type="range" id="rgLinger" min="0" max="1" step="0.05">
+            <p class="hint">0 = le shibi disparaît avec la voix&nbsp;; 0,3&nbsp;s = il reste un instant (échanges rapides = les deux à l’écran).</p>
+          </div>
+          <div class="slider" data-slider>
+            <div class="slider-top"><label for="rgMaxHold">Durée maxi d’une pose</label><output id="outMaxHold"></output></div>
+            <input type="range" id="rgMaxHold" min="1.5" max="8" step="0.1">
+            <p class="hint">Au-delà, la pose change — jamais de shibi figé.</p>
+          </div>
+          <label class="check-row"><input type="checkbox" id="chkSwap"> Inverser les côtés (Marvouch à droite, AgentOMG à gauche)</label>
+          <label class="check-row" id="rowReplace"><input type="checkbox" id="chkReplace"> Remplacer les shibis déjà posés par une exécution précédente</label>
+          <label class="check-row"><input type="checkbox" id="chkRepick"> Refaire le choix des poses <small class="opt">(sinon le choix déjà fait pour cette vidéo est réutilisé)</small></label>
+
+          <details class="accordion" id="galleryDetails">
+            <summary>Voir les 22 poses de chaque personnage</summary>
+            <div class="gallery-block"><h4><i class="dot dot-vert"></i> AgentOMG</h4><div id="galleryOmg" class="gallery"></div></div>
+            <div class="gallery-block"><h4><i class="dot dot-bleu"></i> Marvouch</h4><div id="galleryMarv" class="gallery"></div></div>
+          </details>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Colonne de lancement -->
+  <aside class="col-side">
+    <div class="launch card-in">
+      <h2><span class="step-num small">3</span> Lancer le montage</h2>
+      <ul id="sumLines" class="sum-lines"></ul>
+      <div id="estimateBox" class="estimate"></div>
+      <h3 class="mini-title">Vérifications</h3>
+      <ul id="preflightList" class="preflight"></ul>
+      <button type="button" id="btnRun" class="btn btn-primary btn-big">▶&ensp;Lancer le montage</button>
+      <button type="button" id="btnCheck" class="btn btn-ghost w_full">Vérification complète (avec test réseau)</button>
+      <p class="hint center">CapCut doit être fermé pendant le traitement — le logiciel peut le fermer pour toi.</p>
+    </div>
+
+    <details class="card advanced card-in" id="advancedCard">
+      <summary>Réglages avancés</summary>
+      <div class="adv-body">
+        <div class="field">
+          <label for="inApiKey">Clé API Gemini</label>
+          <div class="with-btn"><input id="inApiKey" class="grow mono" type="password" placeholder="Colle ta clé (aistudio.google.com/apikey)" autocomplete="off">
+            <button type="button" class="btn btn-small btn-ghost" id="btnShowKey">Afficher</button></div>
+          <p class="hint" id="keyHint">Enregistrée dans .env sur ton PC uniquement, jamais envoyée ailleurs qu’à Google.</p>
+        </div>
+        <div class="field">
+          <label for="inProjectsDir">Dossier des projets CapCut</label>
+          <div class="with-btn"><input id="inProjectsDir" class="grow mono" type="text" placeholder="Vide = détecté automatiquement" spellcheck="false">
+            <button type="button" class="btn btn-small btn-secondary" id="btnPickDir">Parcourir…</button></div>
+          <p class="hint" id="projectsDirHint"></p>
+        </div>
+        <div class="slider" data-slider>
+          <div class="slider-top"><label for="rgWorkers">Requêtes Gemini en parallèle</label><output id="outWorkers"></output></div>
+          <input type="range" id="rgWorkers" min="1" max="6" step="1">
+          <p class="hint">Plus = plus vite. Baisse si Gemini répond «&nbsp;429 / quota&nbsp;».</p>
+        </div>
+        <label class="check-row"><input type="checkbox" id="chkClose"> Fermer CapCut automatiquement</label>
+        <label class="check-row"><input type="checkbox" id="chkOpen"> Rouvrir CapCut à la fin</label>
+        <label class="check-row"><input type="checkbox" id="chkFresh"> Tout refaire <small class="opt">(vider le cache de cette vidéo au lancement)</small></label>
+        <div class="adv-actions">
+          <button type="button" class="btn btn-small btn-secondary" id="btnClearCache">Vider le cache de la vidéo</button>
+          <button type="button" class="btn btn-small btn-ghost" id="btnOpenBase">Ouvrir le dossier du logiciel</button>
+        </div>
+      </div>
+    </details>
+
+    <p class="footnote">Tout tourne <strong>sur ton PC</strong>&nbsp;: seules les tranches audio partent chez Gemini pour être analysées. Chaque analyse réussie est mise en cache — interrompre puis relancer ne repaie jamais deux fois la même tranche.</p>
+  </aside>
+</main>
+
+<!-- ============================ VUE EXÉCUTION ============================ -->
+<main id="viewRun" class="layout run-layout" hidden>
+  <div class="col-main">
+    <section class="step">
+      <div class="run-head">
+        <div>
+          <h2 id="runTitle">Montage en cours…</h2>
+          <p class="step-sub" id="runSubtitle">Tu peux laisser travailler&nbsp;: ferme même l’onglet, le montage continue.</p>
+        </div>
+        <div class="run-chips">
+          <span class="chip">⏱ <b id="chipElapsed">0:00</b></span>
+          <span class="chip" id="chipEtaWrap">Reste <b id="chipEta">~</b></span>
+          <span class="chip"><i id="liveDot" class="live-dot"></i><b id="chipActivity">en direct</b></span>
+        </div>
+      </div>
+
+      <div class="big-progress"><div id="bigBar" class="big-bar"></div><span id="bigPct">0&nbsp;%</span></div>
+      <ol id="stageList" class="stages"></ol>
+
+      <div id="donePanel" class="done-panel" hidden>
+        <svg class="check-anim" viewBox="0 0 52 52"><circle cx="26" cy="26" r="24"/><path d="M15 27l7.5 7.5L37 19"/></svg>
+        <h3 id="doneTitle">Montage terminé 🎉</h3>
+        <p id="doneText"></p>
+        <div id="doneStats" class="stats-grid"></div>
+        <div class="done-actions">
+          <button type="button" class="btn btn-primary" id="btnOpenCapcutDone">Ouvrir CapCut</button>
+          <button type="button" class="btn btn-secondary" id="btnOpenProjectDone">Ouvrir le dossier du projet</button>
+          <button type="button" class="btn btn-ghost" id="btnAgainDone">Nouveau montage</button>
+        </div>
+      </div>
+
+      <div id="errorPanel" class="error-panel" hidden>
+        <h3 id="errorTitle">Ça s’est arrêté</h3>
+        <p id="errorText"></p>
+        <p class="hint">Rien n’est perdu&nbsp;: tout ce qui a déjà été analysé est en cache. Corrige le souci puis relance, ça reprend là où ça s’est arrêté.</p>
+        <details class="accordion"><summary>Détail technique</summary><pre id="errorDetail" class="mono"></pre></details>
+        <div class="done-actions">
+          <button type="button" class="btn btn-primary" id="btnRetry">↩ Revenir aux réglages et réessayer</button>
+        </div>
+      </div>
+
+      <div class="run-actions">
+        <button type="button" class="btn btn-danger" id="btnCancel">■&ensp;Arrêter</button>
+        <button type="button" class="btn btn-ghost" id="btnBackSetup" hidden>← Revenir aux réglages</button>
+        <span class="hint" id="cancelHint">Arrêter est propre&nbsp;: le travail déjà fait est conservé en cache.</span>
+      </div>
+    </section>
+  </div>
+
+  <aside class="col-side">
+    <div class="card side-card">
+      <h3>En ce moment</h3>
+      <ul id="liveTasks" class="live-tasks"></ul>
+      <p class="hint" id="noTaskHint">Les appels à Gemini et les traitements ffmpeg en cours s’affichent ici, avec leur chronomètre.</p>
+    </div>
+    <div class="card side-card journal-card">
+      <div class="journal-head">
+        <h3>Journal</h3>
+        <label class="check-row tiny"><input type="checkbox" id="chkAutoscroll" checked> Suivre</label>
+        <button type="button" class="btn btn-ghost btn-small" id="btnCopyLog">Copier</button>
+      </div>
+      <div id="journal" class="journal"></div>
+    </div>
+  </aside>
+</main>
+
+<!-- ============================ MODALES ============================ -->
+<div id="browseModal" class="modal-back" hidden>
+  <div class="modal" role="dialog" aria-label="Choisir un fichier vidéo">
+    <div class="modal-head"><h3>Choisir la vidéo du rec</h3><button class="btn btn-ghost btn-small modal-x" data-close>✕</button></div>
+    <div id="browseRoots" class="browse-roots"></div>
+    <div class="browse-path"><button type="button" class="btn btn-small btn-ghost" id="btnBrowseUp">↑ Dossier parent</button><span id="browsePath" class="mono"></span></div>
+    <div id="browseList" class="browse-list"></div>
+    <div class="modal-foot"><span class="hint">Clique un dossier pour l’ouvrir, une vidéo pour la choisir.</span>
+      <button type="button" class="btn btn-secondary" data-close>Annuler</button></div>
+  </div>
+</div>
+
+<div id="helpModal" class="modal-back" hidden>
+  <div class="modal guide" role="dialog" aria-label="Guide">
+    <div class="modal-head"><h3>Guide rapide</h3><button class="btn btn-ghost btn-small modal-x" data-close>✕</button></div>
+    <div class="guide-body">
+      <h4>Le projet CapCut « modèle » (une seule fois, ≈ 3 minutes)</h4>
+      <p>Le logiciel clone ce projet&nbsp;: il y reprend le format d’image et surtout <strong>le format exact des keyframes de TA version de CapCut</strong>. Sans lui, pas de zooms animés fiables.</p>
+      <ol>
+        <li>CapCut → nouveau projet, choisis le <strong>format voulu</strong> (16:9, 9:16…).</li>
+        <li>Importe n’importe quelle vidéo, pose-la sur la piste principale <strong>en un seul clip, sans coupe</strong>.</li>
+        <li>Sélectionne le clip, active le keyframe «&nbsp;Échelle&nbsp;»&nbsp;: au début un keyframe à <strong>100&nbsp;%</strong>, à la fin une échelle de <strong>110&nbsp;%</strong>.</li>
+        <li>Nomme le projet <strong>AutoShibi-V4</strong>.</li>
+        <li>Reviens à l’accueil et <strong>ferme CapCut</strong>.</li>
+      </ol>
+      <h4>Les deux modes</h4>
+      <p><strong>Nouveau montage</strong>&nbsp;: dérush + zooms + shibis depuis le rec brut, dans un nouveau projet cloné du modèle.<br>
+      <strong>Terminer mon montage</strong>&nbsp;: tu as déjà coupé à la main dans CapCut — on ajoute zooms et shibis sur TES plans (même en désordre), sur 2 nouvelles pistes, avec sauvegarde avant. Relancer remplace les anciens shibis.</p>
+      <h4>Qui parle&nbsp;?</h4>
+      <p>Avec les <strong>pistes audio séparées</strong> de ton rec (une par personne), le logiciel <em>sait</em> qui parle — aucun shibi inversé, et les deux s’affichent ensemble quand ils parlent en même temps. Sans pistes séparées, Gemini devine (moins fiable).</p>
+      <h4>Si quelque chose coince</h4>
+      <ul>
+        <li><strong>Zooms figés</strong> → le modèle n’a pas son keyframe d’exemple (étape 3 ci-dessus).</li>
+        <li><strong>Shibis inversés</strong> → échange les numéros de pistes des deux personnages.</li>
+        <li><strong>Un shibi sans voix</strong> → fuite du micro voisin&nbsp;: baisse «&nbsp;Sensibilité de la voix&nbsp;» (ex. 20). Voix douce manquée&nbsp;: monte-la (ex. 30).</li>
+        <li><strong>429 / quota Gemini</strong> → le logiciel patiente et change de modèle tout seul&nbsp;; tu peux aussi baisser les requêtes parallèles (Avancé).</li>
+        <li><strong>Annuler une modification</strong> → recopie les fichiers du dossier <span class="mono">_autoshibi_backups</span> dans le projet (CapCut fermé), ou travaille sur une copie.</li>
+      </ul>
+    </div>
+    <div class="modal-foot"><span></span><button type="button" class="btn btn-primary" data-close>Compris&nbsp;!</button></div>
+  </div>
+</div>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
